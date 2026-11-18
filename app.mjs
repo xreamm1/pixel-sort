@@ -3,6 +3,7 @@ import { shuffle, quickSort, mergeSort, heapSort, insertionSort, selectionSort, 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(el => [el.id, el]));
 const context = ui.pixels.getContext('2d');
 const historyKey = 'pixel-sort-history-v1';
+const results = globalThis.caches?.open('pixel-sort-results-v1').catch(() => null);
 const filtersKey = 'pixel-sort-algorithms-v1';
 const themes = ['landscapes', 'animals', 'plants', 'architecture', 'astronomy'];
 const queries = ['mountains', 'coral reef', 'forest', 'waterfall', 'wildlife', 'city skyline', 'desert'];
@@ -63,24 +64,87 @@ function history() {
   return JSON.parse(localStorage.getItem(historyKey) || '[]');
 }
 
+function resultKey(id) {
+  return new URL('./history-result/' + encodeURIComponent(id), location.href);
+}
+
+async function showResult(img, id) {
+  img.dataset.resultId = id;
+  const cache = await results;
+  const response = await cache?.match(resultKey(id));
+  const blob = await response?.blob();
+  if (!blob || img.dataset.resultId !== id) return false;
+  const url = URL.createObjectURL(blob);
+  const release = () => {
+    URL.revokeObjectURL(url);
+    img.removeEventListener('load', release);
+    img.removeEventListener('error', release);
+  };
+  img.addEventListener('load', release);
+  img.addEventListener('error', release);
+  img.src = url;
+  return true;
+}
+
+function updateHistory(change) {
+  const write = () => {
+    const seen = history();
+    if (!change(seen)) return false;
+    localStorage.setItem(historyKey, JSON.stringify(seen));
+    renderHistory();
+    return true;
+  };
+  return navigator.locks ? navigator.locks.request(historyKey, write) : write();
+}
+
+async function saveResult(id, algorithm) {
+  const blob = await new Promise(resolve => ui.pixels.toBlob(resolve));
+  const cache = await results;
+  if (!cache || !blob) return;
+  await cache.put(resultKey(id), new Response(blob, { headers: { 'Content-Type': blob.type } }));
+  await updateHistory(seen => {
+    const entry = seen.find(item => item.id === id);
+    if (!entry) return false;
+    entry.algorithm = algorithm;
+    return true;
+  });
+}
+
 function renderHistory() {
   const seen = history();
   ui.count.textContent = seen.length;
   const entries = seen.filter(item => item.image && item.url).reverse();
   ui.empty.hidden = entries.length > 0;
+  const cards = new Map([...ui.entries.children].map(card => [card.dataset.id, card]));
   ui.entries.replaceChildren(...entries.map(item => {
+    const existing = cards.get(item.id);
+    if (existing && existing.dataset.algorithm === (item.algorithm || '')) return existing;
     const li = document.createElement('li');
+    li.dataset.id = item.id;
+    li.dataset.algorithm = item.algorithm || '';
     const button = document.createElement('button');
     const img = document.createElement('img');
     img.src = item.image;
     img.alt = '';
     img.loading = 'lazy';
     button.type = 'button';
-    button.append(img, item.source);
-    button.addEventListener('click', () => {
+    if (item.algorithm) {
+      img.classList.add('pixelated');
+      showResult(img, item.id).catch(() => {});
+    }
+    button.append(img, item.algorithm ? item.algorithm + ' · Собрано' : item.source);
+    button.addEventListener('click', async () => {
       ui.previewImage.src = item.image;
       ui.previewSource.href = item.url;
+      ui.resultCaption.textContent = item.algorithm ? 'Пиксельный результат · ' + item.algorithm : 'Пиксельный результат';
+      ui.previewResult.hidden = true;
+      ui.previewResult.dataset.resultId = item.id;
+      ui.resultMissing.hidden = Boolean(item.algorithm);
       ui.preview.showModal();
+      const shown = item.algorithm && await showResult(ui.previewResult, item.id).catch(() => false);
+      if (ui.previewResult.dataset.resultId !== item.id) return;
+      ui.previewResult.hidden = !shown;
+      ui.resultMissing.hidden = Boolean(shown);
     });
     li.append(button);
     return li;
@@ -88,15 +152,11 @@ function renderHistory() {
 }
 
 function reserve(item, fingerprint) {
-  const record = () => {
-    const seen = history();
+  return updateHistory(seen => {
     if (seen.some(entry => entry.id === item.id || entry.fingerprint === fingerprint)) return false;
     seen.push({ ...item, fingerprint });
-    localStorage.setItem(historyKey, JSON.stringify(seen));
-    renderHistory();
     return true;
-  };
-  return navigator.locks ? navigator.locks.request(historyKey, record) : record();
+  });
 }
 
 async function json(url) {
@@ -195,7 +255,7 @@ async function pickImage() {
         for (let i = 0; i < loaded.length; i++) {
           if (loaded[i].status !== 'fulfilled') continue;
           const bitmap = loaded[i].value;
-          const scale = 176 / Math.max(bitmap.width, bitmap.height);
+          const scale = 352 / Math.max(bitmap.width, bitmap.height);
           const canvas = document.createElement('canvas');
           canvas.width = Math.max(1, Math.round(bitmap.width * scale));
           canvas.height = Math.max(1, Math.round(bitmap.height * scale));
@@ -221,10 +281,26 @@ function setProgress(value) {
   ui.percent.textContent = percent + '%';
 }
 
+function recordFrames(order, sort) {
+  let frames = [order.slice()];
+  let stride = 64;
+  let steps = 0;
+  for (const _ of sort(order)) {
+    if (++steps % stride !== 0) continue;
+    frames.push(order.slice());
+    if (frames.length === 97) {
+      frames = frames.filter((_, index) => index % 2 === 0);
+      stride *= 2;
+    }
+  }
+  frames.push(order.slice());
+  return frames;
+}
+
 function animate({ canvas, item }) {
   const algorithm = chooseAlgorithm();
   const tiled = algorithm === experimental;
-  const scale = algorithm.size / Math.max(canvas.width, canvas.height);
+  const scale = 2 * algorithm.size / Math.max(canvas.width, canvas.height);
   const width = tiled ? Math.max(3, Math.round(canvas.width * scale / 3) * 3) : Math.max(1, Math.round(canvas.width * scale));
   const height = tiled ? Math.max(2, Math.round(canvas.height * scale / 2) * 2) : Math.max(1, Math.round(canvas.height * scale));
   ui.pixels.width = width;
@@ -254,13 +330,15 @@ function animate({ canvas, item }) {
   order.forEach((index, position) => paint(position, index));
   context.putImageData(frame, 0, 0);
   ui.placeholder.hidden = true;
+  ui.original.src = item.image;
+  ui.original.hidden = false;
   ui.dimensions.textContent = tiled ? '6 фрагментов' : width + ' × ' + height + ' PX';
   ui.source.href = item.url;
   ui.source.textContent = item.source + ' ↗';
   ui.source.hidden = false;
 
   ui.algorithm.textContent = algorithm.name;
-  const moves = Array.from(algorithm.sort(order));
+  const frames = recordFrames(order, algorithm.sort);
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const run = { paused: reducedMotion, elapsed: 0, lastFrame: null, position: 0 };
   animation = run;
@@ -285,18 +363,18 @@ function animate({ canvas, item }) {
       }
       run.elapsed += Math.min(delta, 80);
       const progress = Math.min(1, run.elapsed / duration);
-      const target = Math.floor(progress * moves.length);
-      while (run.position < target) {
-        const [i, j, left, right] = moves[run.position++];
-        paint(i, left);
-        if (i !== j) paint(j, right);
+      const target = Math.floor(progress * (frames.length - 1));
+      if (target !== run.position) {
+        frames[target].forEach((value, position) => paint(position, value));
+        context.putImageData(frame, 0, 0);
+        run.position = target;
       }
-      context.putImageData(frame, 0, 0);
       setProgress(progress);
       if (progress === 1) {
         ui.status.textContent = 'Картинка собрана';
         run.finished = true;
         run.hold = 2000;
+        saveResult(item.id, algorithm.name).catch(() => {});
       }
     }
     requestAnimationFrame(draw);
@@ -310,6 +388,7 @@ async function next() {
   ui.pause.disabled = true;
   ui.pause.textContent = 'Пауза';
   ui.placeholder.hidden = false;
+  ui.original.hidden = true;
   ui.source.hidden = true;
   ui.dimensions.textContent = '— × — PX';
   ui.algorithm.textContent = '—';

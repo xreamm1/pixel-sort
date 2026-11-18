@@ -23,9 +23,15 @@ h1 { font-size: clamp(1.7rem, 5vw, 2.8rem); margin: 0; letter-spacing: -.055em; 
 .stage { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px; }
 .stage-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); font-size: .8rem; }
 .stage-line strong { color: var(--ink); font-size: .95rem; }
+.comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.comparison figure { margin: 0; min-width: 0; }
+.comparison figcaption { color: var(--muted); font-size: .8rem; }
+.live { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.live .stage-line, .live figcaption { min-height: 22px; }
 .viewport { position: relative; aspect-ratio: 16 / 9; background: #0d0d0d; margin-top: 12px; overflow: hidden; border-radius: 5px; }
-.viewport canvas, .placeholder { position: absolute; inset: 0; width: 100%; height: 100%; }
-canvas { object-fit: contain; image-rendering: pixelated; }
+.viewport canvas, .viewport img, .placeholder { position: absolute; inset: 0; width: 100%; height: 100%; }
+.viewport canvas, .viewport img { object-fit: contain; }
+canvas, .pixelated { image-rendering: pixelated; }
 .placeholder { background: #171717; }
 [hidden] { display: none !important; }
 .footer { margin: 11px 0 7px; }
@@ -42,10 +48,11 @@ button:disabled { opacity: .45; cursor: default; }
 .archive ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 .archive li button { display: grid; gap: 5px; width: 100%; padding: 0; border: 0; text-align: left; background: transparent; color: var(--muted); font-size: .75rem; }
 .archive li img { display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--surface); border-radius: 5px; object-fit: cover; }
-dialog { color: var(--ink); background: #151515; border: 1px solid var(--line); border-radius: 10px; padding: 12px; max-width: calc(100% - 24px); }
+dialog { color: var(--ink); background: #151515; border: 1px solid var(--line); border-radius: 10px; padding: 12px; width: min(960px, calc(100% - 24px)); }
 dialog::backdrop { background: #000b; }
 dialog form { text-align: right; }
-dialog img { display: block; max-width: min(78vw, 780px); max-height: 72vh; margin: 10px auto; }
+dialog .comparison { margin: 12px 0; }
+dialog img { display: block; width: 100%; height: min(52vh, 42vw); object-fit: contain; margin-top: 8px; background: #0d0d0d; border-radius: 5px; }
 dialog a { color: var(--muted); font-size: .85rem; }
 .settings { margin-top: 16px; color: var(--muted); font-size: .85rem; }
 .settings summary { cursor: pointer; width: fit-content; }
@@ -53,3 +60,7 @@ dialog a { color: var(--muted); font-size: .85rem; }
 .settings legend { margin-bottom: 7px; padding: 0; }
 .settings label { display: flex; align-items: center; gap: 5px; color: var(--ink); }
 .settings p { margin: 6px 0 0; }
+@media (max-width: 540px) {
+  .live { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 8px; }
+  .live .stage-line { flex-wrap: wrap; gap: 2px 8px; }
+}

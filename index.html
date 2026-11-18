@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Случайные изображения из открытых коллекций и визуализация Quick Sort и Merge Sort.">
 <title>Pixel Sort — Сортировка пикселей</title>
-<link rel="stylesheet" href="style.css?v=2">
-<script type="module" src="app.mjs?v=2"></script>
+<link rel="stylesheet" href="style.css?v=3">
+<script type="module" src="app.mjs?v=3"></script>
 </head>
 <body>
 <header><div class="shell bar">
@@ -19,10 +19,18 @@
   </section>
   <section class="studio" aria-label="Визуализация сортировки">
     <div class="stage">
-      <div class="stage-line"><strong id="algorithm">—</strong><span id="dimensions">— × — PX</span></div>
-      <div class="viewport">
-        <canvas id="pixels" role="img" aria-label="Анимация сортировки пикселей"></canvas>
-        <div id="placeholder" class="placeholder" aria-hidden="true"></div>
+      <div class="comparison live">
+        <section aria-label="Текущая сортировка">
+          <div class="stage-line"><span>Алгоритм <strong id="algorithm">—</strong></span><span id="dimensions">— × — PX</span></div>
+          <div class="viewport">
+            <canvas id="pixels" role="img" aria-label="Анимация сортировки пикселей"></canvas>
+            <div id="placeholder" class="placeholder" aria-hidden="true"></div>
+          </div>
+        </section>
+        <figure>
+          <figcaption>Оригинал</figcaption>
+          <div class="viewport"><img id="original" alt="Оригинал текущей картинки" hidden></div>
+        </figure>
       </div>
       <div class="stage-line footer"><span id="status" role="status">Ищем изображение…</span><b id="percent">0%</b></div>
       <progress id="progress" max="100" value="0" aria-label="Ход сортировки"></progress>
@@ -42,9 +50,19 @@
     <h2>История картинок</h2>
     <p id="empty">Новые картинки будут появляться здесь.</p>
     <ul id="entries" aria-label="Просмотренные картинки"></ul>
-    <dialog id="preview" aria-label="Просмотр картинки из истории">
+    <dialog id="preview" aria-label="Сравнение картинки из истории">
       <form method="dialog"><button>Закрыть</button></form>
-      <img id="previewImage" alt="Картинка из истории">
+      <div class="comparison">
+        <figure>
+          <figcaption id="resultCaption">Пиксельный результат</figcaption>
+          <img id="previewResult" class="pixelated" alt="Пиксельный результат" hidden>
+          <p id="resultMissing" hidden>Результат этой сортировки не сохранён.</p>
+        </figure>
+        <figure>
+          <figcaption>Оригинал</figcaption>
+          <img id="previewImage" alt="Оригинал из истории">
+        </figure>
+      </div>
       <a id="previewSource" target="_blank" rel="noopener">Открыть источник ↗</a>
     </dialog>
   </section>
