@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Случайные изображения из открытых коллекций и визуализация Quick Sort и Merge Sort.">
 <title>Pixel Sort — Сортировка пикселей</title>
-<link rel="stylesheet" href="style.css?v=4">
-<script type="module" src="app.mjs?v=4"></script>
+<link rel="stylesheet" href="style.css?v=5">
+<script type="module" src="app.mjs?v=5"></script>
 </head>
 <body>
 <header><div class="shell bar">
@@ -50,7 +50,11 @@
     <details class="settings">
       <summary>Настройки</summary>
       <fieldset id="filters"><legend>Алгоритмы для случайного выбора</legend></fieldset>
-      <p>Bogo Sort перемешивает 6 фрагментов до совпадения с оригиналом.</p>
+      <div class="speed">
+        <label for="bogoSpeed">Скорость Bogo Sort <output id="speedValue" for="bogoSpeed">10 000</output> обменов/с</label>
+        <input id="bogoSpeed" type="range" min="1000" max="50000" step="1000" value="10000">
+        <p>Bogo Sort случайно перемешивает все пиксели. На такой сетке сборка практически недостижима.</p>
+      </div>
     </details>
   </section>
   <section class="archive" id="gallery">

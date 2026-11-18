@@ -62,6 +62,8 @@ dialog a { color: var(--muted); font-size: .85rem; }
 .settings legend { margin-bottom: 7px; padding: 0; }
 .settings label { display: flex; align-items: center; gap: 5px; color: var(--ink); }
 .settings p { margin: 6px 0 0; }
+.speed { margin-top: 12px; }
+.speed input { width: min(100%, 300px); margin: 8px 0 0; accent-color: var(--ink); }
 @media (max-width: 540px) {
   .live { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 8px; }
   .live .stage-line { flex-wrap: wrap; gap: 2px 8px; }

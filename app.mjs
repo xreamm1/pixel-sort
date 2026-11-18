@@ -7,6 +7,7 @@ const formatTime = new Intl.NumberFormat('ru', { minimumFractionDigits: 1, maxim
 const historyKey = 'pixel-sort-history-v1';
 const results = globalThis.caches?.open('pixel-sort-results-v1').catch(() => null);
 const filtersKey = 'pixel-sort-algorithms-v1';
+const speedKey = 'pixel-sort-bogo-speed-v1';
 const themes = ['landscapes', 'animals', 'plants', 'architecture', 'astronomy'];
 const queries = ['mountains', 'coral reef', 'forest', 'waterfall', 'wildlife', 'city skyline', 'desert'];
 const algorithms = [
@@ -30,6 +31,19 @@ try {
   const available = Array.isArray(saved) ? saved.filter(name => options.some(item => item.name === name)) : [];
   if (available.length) enabled = available;
 } catch {}
+
+try {
+  const saved = localStorage.getItem(speedKey);
+  if (saved !== null) ui.bogoSpeed.value = saved;
+} catch {}
+function showSpeed() {
+  ui.speedValue.textContent = formatCount.format(ui.bogoSpeed.valueAsNumber);
+}
+showSpeed();
+ui.bogoSpeed.addEventListener('input', () => {
+  showSpeed();
+  try { localStorage.setItem(speedKey, ui.bogoSpeed.value); } catch {}
+});
 
 const filters = options.map(item => {
   const label = document.createElement('label');
@@ -306,46 +320,39 @@ function recordFrames(order, sort) {
 
 function animate({ canvas, item }) {
   const algorithm = chooseAlgorithm();
-  const tiled = algorithm === experimental;
+  const bogo = algorithm === experimental;
   const scale = 2 * algorithm.size / Math.max(canvas.width, canvas.height);
-  const width = tiled ? Math.max(3, Math.round(canvas.width * scale / 3) * 3) : Math.max(1, Math.round(canvas.width * scale));
-  const height = tiled ? Math.max(2, Math.round(canvas.height * scale / 2) * 2) : Math.max(1, Math.round(canvas.height * scale));
+  const width = Math.max(1, Math.round(canvas.width * scale));
+  const height = Math.max(1, Math.round(canvas.height * scale));
   ui.pixels.width = width;
   ui.pixels.height = height;
   context.drawImage(canvas, 0, 0, width, height);
   const sourcePixels = new Uint32Array(context.getImageData(0, 0, width, height).data.buffer);
   const frame = context.createImageData(width, height);
   const framePixels = new Uint32Array(frame.data.buffer);
-  const order = shuffle(Uint32Array.from({ length: tiled ? 6 : sourcePixels.length }, (_, index) => index));
-  if (tiled && order.every((value, index) => value === index)) [order[0], order[1]] = [order[1], order[0]];
-  const tileWidth = width / 3;
-  const tileHeight = height / 2;
+  const order = shuffle(Uint32Array.from({ length: sourcePixels.length }, (_, index) => index));
   function paint(position, source) {
-    if (!tiled) {
-      framePixels[position] = sourcePixels[source];
-      return;
-    }
-    const fromX = source % 3 * tileWidth;
-    const toX = position % 3 * tileWidth;
-    const fromY = Math.floor(source / 3) * tileHeight;
-    const toY = Math.floor(position / 3) * tileHeight;
-    for (let row = 0; row < tileHeight; row++) {
-      const start = (fromY + row) * width + fromX;
-      framePixels.set(sourcePixels.subarray(start, start + tileWidth), (toY + row) * width + toX);
-    }
+    framePixels[position] = sourcePixels[source];
   }
   order.forEach((index, position) => paint(position, index));
   context.putImageData(frame, 0, 0);
   ui.placeholder.hidden = true;
   ui.original.src = item.image;
   ui.original.hidden = false;
-  ui.dimensions.textContent = tiled ? '6 фрагментов' : width + ' × ' + height + ' PX';
+  ui.dimensions.textContent = width + ' × ' + height + ' PX';
   ui.source.href = item.url;
   ui.source.textContent = item.source + ' ↗';
   ui.source.hidden = false;
 
   ui.algorithm.textContent = algorithm.name;
-  const frames = recordFrames(order, algorithm.sort);
+  const frames = bogo ? null : recordFrames(order, algorithm.sort);
+  const randomMoves = bogo ? algorithm.sort(order) : null;
+  let budget = 0;
+  let operations = 0;
+  if (bogo) {
+    ui.progress.removeAttribute('value');
+    ui.percent.textContent = '—';
+  }
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const run = { paused: reducedMotion, elapsed: 0, lastFrame: null, position: 0 };
   animation = run;
@@ -353,6 +360,14 @@ function animate({ canvas, item }) {
   ui.pause.textContent = run.paused ? 'Продолжить' : 'Пауза';
   ui.status.textContent = run.paused ? 'На паузе' : 'Сортировка пикселей…';
   const duration = 4800 + Math.random() * 2600;
+
+  function finish() {
+    setProgress(1);
+    ui.status.textContent = 'Картинка собрана';
+    run.finished = true;
+    run.hold = 2000;
+    saveResult(item.id, algorithm.name).catch(() => {});
+  }
 
   function draw(time) {
     if (animation !== run) return;
@@ -368,6 +383,30 @@ function animate({ canvas, item }) {
         requestAnimationFrame(draw);
         return;
       }
+      if (bogo) {
+        const activeDelta = Math.min(delta, 100);
+        run.elapsed += activeDelta;
+        budget += activeDelta * ui.bogoSpeed.valueAsNumber / 1000;
+        let done = false;
+        const count = Math.floor(budget);
+        budget -= count;
+        for (let step = 0; step < count; step++) {
+          const move = randomMoves.next();
+          if (move.done) {
+            done = true;
+            break;
+          }
+          const [i, j, left, right] = move.value;
+          paint(i, left);
+          paint(j, right);
+          operations++;
+        }
+        if (count) context.putImageData(frame, 0, 0);
+        setMetrics(operations, run.elapsed);
+        if (done) finish();
+        requestAnimationFrame(draw);
+        return;
+      }
       run.elapsed += delta;
       const progress = Math.min(1, run.elapsed / duration);
       const target = Math.floor(progress * (frames.length - 1));
@@ -378,12 +417,7 @@ function animate({ canvas, item }) {
       }
       setProgress(progress);
       setMetrics(frames[target].steps, run.elapsed);
-      if (progress === 1) {
-        ui.status.textContent = 'Картинка собрана';
-        run.finished = true;
-        run.hold = 2000;
-        saveResult(item.id, algorithm.name).catch(() => {});
-      }
+      if (progress === 1) finish();
     }
     requestAnimationFrame(draw);
   }
