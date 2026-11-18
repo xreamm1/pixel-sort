@@ -26,6 +26,7 @@ const samples = await fetch('./samples.json').then(response => response.json()).
 let animation;
 let pendingImage;
 let currentImage;
+let choosingFile = false;
 let lastAlgorithm;
 let upcoming = [];
 let enabled = algorithms.map(item => item.name);
@@ -391,6 +392,11 @@ function animate({ canvas, item }, hue = false) {
 
   function draw(time) {
     if (animation !== run) return;
+    if (choosingFile) {
+      run.lastFrame = null;
+      requestAnimationFrame(draw);
+      return;
+    }
     if (!run.paused) {
       const delta = run.lastFrame === null ? 0 : time - run.lastFrame;
       run.lastFrame = time;
@@ -510,8 +516,13 @@ async function makeHue(file) {
 
 ui.next.addEventListener('click', next);
 ui.random.addEventListener('click', () => makeHue());
-ui.upload.addEventListener('click', () => ui.file.click());
+ui.upload.addEventListener('click', () => {
+  choosingFile = true;
+  ui.file.click();
+});
+ui.file.addEventListener('cancel', () => { choosingFile = false; });
 ui.file.addEventListener('change', () => {
+  choosingFile = false;
   const file = ui.file.files[0];
   ui.file.value = '';
   if (file && !ui.upload.disabled) makeHue(file);
