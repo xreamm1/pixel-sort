@@ -1,25 +1,99 @@
-import { shuffle, quickSort, mergeSort } from './sort.mjs';
+import { shuffle, quickSort, mergeSort, heapSort, insertionSort, selectionSort, bubbleSort, bogoSort } from './sort.mjs';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(el => [el.id, el]));
 const context = ui.pixels.getContext('2d');
-const original = ui.reference.getContext('2d', { willReadFrequently: true });
 const historyKey = 'pixel-sort-history-v1';
+const filtersKey = 'pixel-sort-algorithms-v1';
 const themes = ['landscapes', 'animals', 'plants', 'architecture', 'astronomy'];
+const queries = ['mountains', 'coral reef', 'forest', 'waterfall', 'wildlife', 'city skyline', 'desert'];
+const algorithms = [
+  { name: 'Quick Sort', size: 160, sort: order => quickSort(order, Math.random() < .5 ? 'random' : 'middle') },
+  { name: 'Merge Sort', size: 160, sort: order => mergeSort(order, Math.random() < .5) },
+  { name: 'Heap Sort', size: 124, sort: heapSort },
+  { name: 'Insertion Sort', size: 32, sort: insertionSort },
+  { name: 'Selection Sort', size: 42, sort: selectionSort },
+  { name: 'Bubble Sort', size: 32, sort: bubbleSort }
+];
+const experimental = { name: 'Bogo Sort', size: 168, sort: bogoSort };
+const options = [...algorithms, experimental];
 const samples = await fetch('./samples.json').then(response => response.json()).catch(() => []);
 let animation;
+let pendingImage;
 let lastAlgorithm;
+let upcoming = [];
+let enabled = algorithms.map(item => item.name);
+try {
+  const saved = JSON.parse(localStorage.getItem(filtersKey) || 'null');
+  const available = Array.isArray(saved) ? saved.filter(name => options.some(item => item.name === name)) : [];
+  if (available.length) enabled = available;
+} catch {}
+
+const filters = options.map(item => {
+  const label = document.createElement('label');
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.value = item.name;
+  input.checked = enabled.includes(item.name);
+  label.append(input, item === experimental ? item.name + ' (экспериментальный)' : item.name);
+  ui.filters.append(label);
+  return input;
+});
+
+function updateFilters() {
+  for (const input of filters) input.disabled = input.checked && enabled.length === 1;
+}
+updateFilters();
+ui.filters.addEventListener('change', () => {
+  enabled = filters.filter(input => input.checked).map(input => input.value);
+  upcoming = [];
+  try { localStorage.setItem(filtersKey, JSON.stringify(enabled)); } catch {}
+  updateFilters();
+});
+
+function chooseAlgorithm() {
+  if (!upcoming.length) {
+    upcoming = shuffle(options.filter(item => enabled.includes(item.name)));
+    if (upcoming.length > 1 && upcoming.at(-1) === lastAlgorithm) upcoming.unshift(upcoming.pop());
+  }
+  lastAlgorithm = upcoming.pop();
+  return lastAlgorithm;
+}
 
 function history() {
   return JSON.parse(localStorage.getItem(historyKey) || '[]');
 }
 
-function reserve(id, fingerprint) {
+function renderHistory() {
+  const seen = history();
+  ui.count.textContent = seen.length;
+  const entries = seen.filter(item => item.image && item.url).reverse();
+  ui.empty.hidden = entries.length > 0;
+  ui.entries.replaceChildren(...entries.map(item => {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    const img = document.createElement('img');
+    img.src = item.image;
+    img.alt = '';
+    img.loading = 'lazy';
+    button.type = 'button';
+    button.append(img, item.source);
+    button.addEventListener('click', () => {
+      ui.previewImage.src = item.image;
+      ui.previewSource.href = item.url;
+      ui.preview.showModal();
+    });
+    li.append(button);
+    return li;
+  }));
+}
+
+function reserve(item, fingerprint) {
   const record = () => {
     const seen = history();
-    if (seen.some(item => item.id === id || item.fingerprint === fingerprint)) return false;
-    seen.push({ id, fingerprint });
+    if (seen.some(entry => entry.id === item.id || entry.fingerprint === fingerprint)) return false;
+    seen.push({ ...item, fingerprint });
     localStorage.setItem(historyKey, JSON.stringify(seen));
-    ui.count.textContent = seen.length;
+    renderHistory();
     return true;
   };
   return navigator.locks ? navigator.locks.request(historyKey, record) : record();
@@ -52,6 +126,35 @@ async function commons(theme) {
   });
 }
 
+async function openverse() {
+  const params = new URLSearchParams({
+    q: shuffle([...queries])[0], page_size: '20', page: String(1 + Math.floor(Math.random() * 5)),
+    mature: 'false', excluded_source: 'wikimedia'
+  });
+  const data = await json('https://api.openverse.org/v1/images/?' + params);
+  return (data.results ?? []).flatMap(item => {
+    if (!item.id || !item.thumbnail?.startsWith('https://') || !item.foreign_landing_url?.startsWith('https://')) return [];
+    return [{ id: 'openverse:' + item.id, image: item.thumbnail, url: item.foreign_landing_url, source: 'Openverse · ' + item.provider }];
+  });
+}
+
+async function naturalist() {
+  const params = new URLSearchParams({
+    iconic_taxa: shuffle(['Aves', 'Plantae', 'Insecta', 'Mammalia', 'Fungi'])[0],
+    quality_grade: 'research', photos: 'true', photo_license: 'cc0,cc-by,cc-by-sa',
+    per_page: '24', page: String(1 + Math.floor(Math.random() * 40))
+  });
+  const data = await json('https://api.inaturalist.org/v1/observations?' + params);
+  return (data.results ?? []).flatMap(item => {
+    const photo = item.photos?.[0];
+    if (!photo?.url?.startsWith('https://') || !photo.license_code) return [];
+    return [{
+      id: 'inaturalist:' + photo.id, image: photo.url.replace('/square.', '/medium.'),
+      url: 'https://www.inaturalist.org/observations/' + item.id, source: 'iNaturalist'
+    }];
+  });
+}
+
 async function loadImage(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
   if (!response.ok) throw new Error('Изображение недоступно');
@@ -79,7 +182,8 @@ function fingerprintOf(canvas) {
 
 async function pickImage() {
   const seen = new Set(history().map(item => item.id));
-  const batches = [...shuffle([...themes]).slice(0, 2).map(commons), Promise.resolve(samples)];
+  const [first, second] = shuffle([...themes]);
+  const batches = [...shuffle([openverse(), naturalist(), commons(first)]), commons(second), Promise.resolve(samples)];
   // Attach handlers immediately while another source is being read.
   const lists = batches.map(batch => batch.catch(() => []));
   for (const list of lists) {
@@ -100,7 +204,8 @@ async function pickImage() {
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
           const item = batch[i];
-          if (await reserve(item.id, fingerprintOf(canvas))) return { canvas, item };
+          const fingerprint = fingerprintOf(canvas);
+          if (!history().some(entry => entry.fingerprint === fingerprint)) return { canvas, item, fingerprint };
         }
       } finally {
         for (const result of loaded) if (result.status === 'fulfilled') result.value.close();
@@ -117,30 +222,45 @@ function setProgress(value) {
 }
 
 function animate({ canvas, item }) {
-  const { width, height } = canvas;
-  ui.pixels.width = ui.reference.width = width;
-  ui.pixels.height = ui.reference.height = height;
-  original.drawImage(canvas, 0, 0);
-  const sourcePixels = new Uint32Array(original.getImageData(0, 0, width, height).data.buffer);
+  const algorithm = chooseAlgorithm();
+  const tiled = algorithm === experimental;
+  const scale = algorithm.size / Math.max(canvas.width, canvas.height);
+  const width = tiled ? Math.max(3, Math.round(canvas.width * scale / 3) * 3) : Math.max(1, Math.round(canvas.width * scale));
+  const height = tiled ? Math.max(2, Math.round(canvas.height * scale / 2) * 2) : Math.max(1, Math.round(canvas.height * scale));
+  ui.pixels.width = width;
+  ui.pixels.height = height;
+  context.drawImage(canvas, 0, 0, width, height);
+  const sourcePixels = new Uint32Array(context.getImageData(0, 0, width, height).data.buffer);
   const frame = context.createImageData(width, height);
   const framePixels = new Uint32Array(frame.data.buffer);
-  const order = shuffle(Uint32Array.from(sourcePixels, (_, index) => index));
-  order.forEach((index, position) => { framePixels[position] = sourcePixels[index]; });
+  const order = shuffle(Uint32Array.from({ length: tiled ? 6 : sourcePixels.length }, (_, index) => index));
+  if (tiled && order.every((value, index) => value === index)) [order[0], order[1]] = [order[1], order[0]];
+  const tileWidth = width / 3;
+  const tileHeight = height / 2;
+  function paint(position, source) {
+    if (!tiled) {
+      framePixels[position] = sourcePixels[source];
+      return;
+    }
+    const fromX = source % 3 * tileWidth;
+    const toX = position % 3 * tileWidth;
+    const fromY = Math.floor(source / 3) * tileHeight;
+    const toY = Math.floor(position / 3) * tileHeight;
+    for (let row = 0; row < tileHeight; row++) {
+      const start = (fromY + row) * width + fromX;
+      framePixels.set(sourcePixels.subarray(start, start + tileWidth), (toY + row) * width + toX);
+    }
+  }
+  order.forEach((index, position) => paint(position, index));
   context.putImageData(frame, 0, 0);
   ui.placeholder.hidden = true;
-  ui.dimensions.textContent = width + ' × ' + height + ' PX';
+  ui.dimensions.textContent = tiled ? '6 фрагментов' : width + ' × ' + height + ' PX';
   ui.source.href = item.url;
   ui.source.textContent = item.source + ' ↗';
   ui.source.hidden = false;
 
-  const algorithm = lastAlgorithm === undefined ? (Math.random() < .5 ? 'quick' : 'merge') : (lastAlgorithm === 'quick' ? 'merge' : 'quick');
-  lastAlgorithm = algorithm;
-  const alternate = Math.random() < .5;
-  ui.algorithm.textContent = algorithm === 'quick' ? 'Quick Sort' : 'Merge Sort';
-  ui.explanation.textContent = algorithm === 'quick'
-    ? 'Разделяет пиксели по опорному индексу и сортирует каждую часть.'
-    : 'Объединяет соседние отсортированные группы пикселей.';
-  const moves = Array.from(algorithm === 'quick' ? quickSort(order, alternate ? 'random' : 'middle') : mergeSort(order, alternate));
+  ui.algorithm.textContent = algorithm.name;
+  const moves = Array.from(algorithm.sort(order));
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const run = { paused: reducedMotion, elapsed: 0, lastFrame: null, position: 0 };
   animation = run;
@@ -152,22 +272,31 @@ function animate({ canvas, item }) {
   function draw(time) {
     if (animation !== run) return;
     if (!run.paused) {
-      if (run.lastFrame !== null) run.elapsed += Math.min(time - run.lastFrame, 80);
+      const delta = run.lastFrame === null ? 0 : time - run.lastFrame;
       run.lastFrame = time;
+      if (run.finished) {
+        run.hold -= delta;
+        if (run.hold <= 0) {
+          next();
+          return;
+        }
+        requestAnimationFrame(draw);
+        return;
+      }
+      run.elapsed += Math.min(delta, 80);
       const progress = Math.min(1, run.elapsed / duration);
       const target = Math.floor(progress * moves.length);
       while (run.position < target) {
         const [i, j, left, right] = moves[run.position++];
-        framePixels[i] = sourcePixels[left];
-        framePixels[j] = sourcePixels[right];
+        paint(i, left);
+        if (i !== j) paint(j, right);
       }
       context.putImageData(frame, 0, 0);
       setProgress(progress);
       if (progress === 1) {
         ui.status.textContent = 'Картинка собрана';
-        ui.pause.disabled = true;
-        animation = null;
-        return;
+        run.finished = true;
+        run.hold = 2000;
       }
     }
     requestAnimationFrame(draw);
@@ -182,15 +311,18 @@ async function next() {
   ui.pause.textContent = 'Пауза';
   ui.placeholder.hidden = false;
   ui.source.hidden = true;
-  original.clearRect(0, 0, ui.reference.width, ui.reference.height);
   ui.dimensions.textContent = '— × — PX';
   ui.algorithm.textContent = '—';
-  ui.explanation.textContent = 'Алгоритм выбирается автоматически для каждой картинки.';
   ui.status.textContent = 'Ищем изображение…';
   setProgress(0);
   try {
-    ui.count.textContent = history().length;
-    animate(await pickImage());
+    renderHistory();
+    let image = await pendingImage;
+    pendingImage = null;
+    image ??= await pickImage();
+    while (!(await reserve(image.item, image.fingerprint))) image = await pickImage();
+    animate(image);
+    pendingImage = pickImage().catch(() => null);
   } catch (error) {
     ui.status.textContent = error.name === 'QuotaExceededError' || error.name === 'SecurityError'
       ? 'Браузер не может сохранить историю показов.'
@@ -206,9 +338,9 @@ ui.pause.addEventListener('click', () => {
   animation.paused = !animation.paused;
   animation.lastFrame = null;
   ui.pause.textContent = animation.paused ? 'Продолжить' : 'Пауза';
-  ui.status.textContent = animation.paused ? 'На паузе' : 'Сортировка пикселей…';
+  ui.status.textContent = animation.paused ? 'На паузе' : animation.finished ? 'Картинка собрана' : 'Сортировка пикселей…';
 });
 window.addEventListener('storage', event => {
-  if (event.key === historyKey) ui.count.textContent = history().length;
+  if (event.key === historyKey) renderHistory();
 });
 next();

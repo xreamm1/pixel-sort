@@ -52,3 +52,65 @@ export function* mergeSort(values, descendingPass) {
     }
   }
 }
+
+function swap(values, i, j) {
+  [values[i], values[j]] = [values[j], values[i]];
+  return [i, j, values[i], values[j]];
+}
+
+export function* heapSort(values) {
+  function* sift(start, end) {
+    let parent = start;
+    while (parent * 2 + 1 < end) {
+      let child = parent * 2 + 1;
+      if (child + 1 < end && values[child + 1] > values[child]) child++;
+      if (values[parent] >= values[child]) break;
+      yield swap(values, parent, child);
+      parent = child;
+    }
+  }
+  for (let i = Math.floor(values.length / 2) - 1; i >= 0; i--) yield* sift(i, values.length);
+  for (let end = values.length - 1; end > 0; end--) {
+    yield swap(values, 0, end);
+    yield* sift(0, end);
+  }
+}
+
+export function* insertionSort(values) {
+  for (let i = 1; i < values.length; i++) {
+    for (let j = i; j > 0 && values[j - 1] > values[j]; j--) {
+      yield swap(values, j - 1, j);
+    }
+  }
+}
+
+export function* selectionSort(values) {
+  for (let i = 0; i < values.length - 1; i++) {
+    let minimum = i;
+    for (let j = i + 1; j < values.length; j++) {
+      if (values[j] < values[minimum]) minimum = j;
+    }
+    if (minimum !== i) yield swap(values, i, minimum);
+  }
+}
+
+export function* bubbleSort(values) {
+  for (let end = values.length - 1; end > 0; end--) {
+    let changed = false;
+    for (let i = 0; i < end; i++) {
+      if (values[i] <= values[i + 1]) continue;
+      yield swap(values, i, i + 1);
+      changed = true;
+    }
+    if (!changed) break;
+  }
+}
+
+export function* bogoSort(values) {
+  while (values.some((value, index) => value !== index)) {
+    for (let i = values.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      if (i !== j) yield swap(values, i, j);
+    }
+  }
+}
