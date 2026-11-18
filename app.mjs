@@ -1,4 +1,4 @@
-import { shuffle, quickSort, mergeSort, heapSort, insertionSort, selectionSort, bubbleSort, bogoSort } from './sort.mjs';
+import { shuffle, quickSort, mergeSort, heapSort, insertionSort, selectionSort, bubbleSort, bogoSort } from './sort.mjs?v=2';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(el => [el.id, el]));
 const context = ui.pixels.getContext('2d');
