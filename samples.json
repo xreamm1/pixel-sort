@@ -1,0 +1,44 @@
+[
+  {
+    "source": "Cleveland Museum of Art",
+    "image": "./monet.jpg",
+    "url": "https://www.clevelandart.org/art/1960.81",
+    "id": "cma:1960.81"
+  },
+  {
+    "source": "Cleveland Museum of Art",
+    "image": "./cma-147016.jpg",
+    "url": "https://clevelandart.org/art/1972.47",
+    "id": "cma:1972.47"
+  },
+  {
+    "source": "Cleveland Museum of Art",
+    "image": "./cma-152006.jpg",
+    "url": "https://clevelandart.org/art/1984.59",
+    "id": "cma:1984.59"
+  },
+  {
+    "source": "Cleveland Museum of Art",
+    "image": "./cma-171296.jpg",
+    "url": "https://clevelandart.org/art/2014.12",
+    "id": "cma:2014.12"
+  },
+  {
+    "source": "Cleveland Museum of Art",
+    "image": "./cma-151298.jpg",
+    "url": "https://clevelandart.org/art/1983.155",
+    "id": "cma:1983.155"
+  },
+  {
+    "source": "Cleveland Museum of Art",
+    "image": "./cma-111066.jpg",
+    "url": "https://clevelandart.org/art/1929.557",
+    "id": "cma:1929.557"
+  },
+  {
+    "source": "Cleveland Museum of Art",
+    "image": "./cma-139454.jpg",
+    "url": "https://clevelandart.org/art/1963.262",
+    "id": "cma:1963.262"
+  }
+]

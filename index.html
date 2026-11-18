@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Случайные изображения из открытых коллекций и визуализация Quick Sort и Merge Sort.">
+<title>Pixel Sort — Сортировка пикселей</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.mjs"></script>
+</head>
+<body>
+<header><div class="shell bar">
+  <a class="brand" href="./"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span> PIXEL<span>SORT</span></a>
+  <div class="history"><b id="count">0</b> <span>в истории</span></div>
+</div></header>
+<main class="shell">
+  <section class="intro">
+    <h1>Сортировка<br><em>пикселей.</em></h1>
+    <p>Случайное изображение из интернета. Тысячи перемешанных пикселей. Смотри, как сортировка собирает их обратно.</p>
+  </section>
+  <section class="studio" aria-label="Визуализация сортировки">
+    <div class="stage">
+      <div class="stage-line"><span><i class="dot"></i> ВИЗУАЛИЗАЦИЯ</span><span id="dimensions">— × — PX</span></div>
+      <div class="viewport">
+        <canvas id="pixels" role="img" aria-label="Анимация сортировки пикселей"></canvas>
+        <div id="placeholder" class="placeholder" aria-hidden="true"></div>
+      </div>
+      <div class="stage-line footer"><span id="status" role="status">Ищем изображение…</span><b id="percent">0%</b></div>
+      <progress id="progress" max="100" value="0" aria-label="Ход сортировки"></progress>
+    </div>
+    <aside>
+      <section class="panel">
+        <h2>Алгоритм</h2>
+        <strong id="algorithm">—</strong>
+        <p id="explanation">Алгоритм выбирается автоматически для каждой картинки.</p>
+        <button id="next" disabled>Новая картинка <span aria-hidden="true">↗</span></button>
+        <button class="secondary" id="pause" disabled>Пауза</button>
+      </section>
+      <section class="panel original">
+        <h2>Оригинал</h2>
+        <div class="thumb"><canvas id="reference" role="img" aria-label="Исходное изображение"></canvas></div>
+        <a id="source" target="_blank" rel="noopener" hidden>Открыть источник ↗</a>
+      </section>
+    </aside>
+  </section>
+</main>
+</body>
+</html>
