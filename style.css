@@ -50,6 +50,7 @@ button:disabled { opacity: .45; cursor: default; }
 select { max-width: 100%; font: inherit; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
 #experimentControls label { color: var(--muted); font-size: .8rem; }
 .timings { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; }
+.until { margin-top: 8px; }
 .settings input[type=number] { width: 7em; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 5px; }
 #pagination { color: var(--muted); font-size: .8rem; }
 #duelPanels { margin-top: 12px; }

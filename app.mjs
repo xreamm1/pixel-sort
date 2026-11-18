@@ -1,4 +1,4 @@
-import { shuffle, quickSort, mergeSort, heapSort, insertionSort, selectionSort, bubbleSort, bogoRunner } from './sort.mjs?v=6';
+import { shuffle, quickSort, mergeSort, heapSort, insertionSort, selectionSort, bubbleSort, bogoRunner } from './sort.mjs?v=9';
 import { randomHuePalette } from './hue.mjs?v=6';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(el => [el.id, el]));
@@ -45,7 +45,8 @@ try {
   if (saved !== null) ui.bogoSpeed.value = saved;
 } catch {}
 function speed() {
-  return Math.min(20000000, Math.max(1000, ui.bogoSpeed.valueAsNumber || 10000));
+  const value = ui.bogoSpeed.valueAsNumber;
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 10000;
 }
 ui.bogoSpeed.addEventListener('change', () => {
   ui.bogoSpeed.value = speed();
@@ -63,6 +64,13 @@ for (const input of [ui.nextDelay, ui.sortDuration]) {
     try { localStorage.setItem(key, input.value); } catch {}
   });
 }
+const untilKey = 'pixel-sort-until-done';
+try { ui.untilDone.checked = localStorage.getItem(untilKey) === 'true'; } catch {}
+ui.sortDuration.disabled = ui.untilDone.checked;
+ui.untilDone.addEventListener('change', () => {
+  ui.sortDuration.disabled = ui.untilDone.checked;
+  try { localStorage.setItem(untilKey, String(ui.untilDone.checked)); } catch {}
+});
 
 const filters = options.map(item => {
   const label = document.createElement('label');
@@ -410,7 +418,7 @@ function animate(image, { hue = false, replay, selected, auto = !hue } = {}) {
   }
 
   ui.algorithm.textContent = algorithm.name;
-  const stream = bogo || Boolean(replay);
+  const stream = bogo || Boolean(replay) || ui.untilDone.checked;
   const frames = stream ? null : recordFrames(order, algorithm.sort);
   const runner = stream ? makeRunner(algorithm, order) : null;
   let budget = 0;
@@ -461,10 +469,17 @@ function animate(image, { hue = false, replay, selected, auto = !hue } = {}) {
       if (stream) {
         const activeDelta = Math.min(delta, 100);
         run.elapsed += activeDelta;
-        budget += activeDelta * (bogo ? speed() : duelRate) / 1000;
-        const count = Math.floor(budget);
-        budget -= count;
-        const { swaps, done } = runner(count);
+        const rate = bogo ? speed() : duelRate;
+        let count = Infinity;
+        if (rate > 0) {
+          budget += activeDelta / 1000 * rate;
+          count = Math.floor(budget);
+          budget -= count;
+        } else {
+          budget = 0;
+          if (!activeDelta) count = 0;
+        }
+        const { swaps, done } = runner(count, bogo ? performance.now() + 8 : undefined);
         operations += swaps;
         if (swaps) {
           order.forEach((value, position) => paint(position, value));

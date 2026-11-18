@@ -109,7 +109,7 @@ export function* bubbleSort(values) {
 export function bogoRunner(values, random = Math.random) {
   let i = 0;
   let done = false;
-  return limit => {
+  return (limit, deadline = Infinity) => {
     let swaps = 0;
     while (swaps < limit && !done) {
       if (i === 0) {
@@ -123,6 +123,10 @@ export function bogoRunner(values, random = Math.random) {
         values[i] = values[j];
         values[j] = value;
         swaps++;
+        if (swaps % 1024 === 0 && performance.now() >= deadline) {
+          i--;
+          break;
+        }
       }
       i--;
     }

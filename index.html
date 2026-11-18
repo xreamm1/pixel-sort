@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Случайные изображения из открытых коллекций и визуализация Quick Sort и Merge Sort.">
 <title>Pixel Sort — Сортировка пикселей</title>
-<link rel="stylesheet" href="style.css?v=8">
-<script type="module" src="app.mjs?v=8"></script>
+<link rel="stylesheet" href="style.css?v=9">
+<script type="module" src="app.mjs?v=9"></script>
 </head>
 <body>
 <header><div class="shell bar">
@@ -72,11 +72,12 @@
         <label>Следующая картинка через, с <input id="nextDelay" type="number" min="0" max="120" step="0.5" value="2"></label>
         <label>Автоматическая сборка, с <input id="sortDuration" type="number" min="0" max="120" step="0.5" value="6"></label>
       </div>
+      <label class="until"><input id="untilDone" type="checkbox"> Собирать до завершения без таймера</label>
       <p>0 секунд — моментально. Bogo Sort работает со своей скоростью.</p>
       <div class="speed">
         <label for="bogoSpeed">Скорость Bogo Sort, обменов/с</label>
-        <input id="bogoSpeed" type="number" min="1000" max="20000000" step="1000" value="10000" inputmode="numeric">
-        <p>Bogo Sort случайно перемешивает все пиксели. На такой сетке сборка практически недостижима.</p>
+        <input id="bogoSpeed" type="number" min="0" step="1" value="10000" inputmode="numeric">
+        <p>0 — максимальная скорость устройства. Bogo Sort случайно перемешивает все пиксели.</p>
       </div>
     </details>
   </section>
