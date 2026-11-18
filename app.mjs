@@ -12,8 +12,8 @@ const speedKey = 'pixel-sort-bogo-speed-v1';
 const themes = ['landscapes', 'animals', 'plants', 'architecture', 'astronomy'];
 const queries = ['mountains', 'coral reef', 'forest', 'waterfall', 'wildlife', 'city skyline', 'desert'];
 const algorithms = [
-  { name: 'Quick Sort', size: 160, sort: order => quickSort(order, Math.random() < .5 ? 'random' : 'middle') },
-  { name: 'Merge Sort', size: 160, sort: order => mergeSort(order, Math.random() < .5) },
+  { name: 'Quick Sort', size: 160, sort: quickSort },
+  { name: 'Merge Sort', size: 160, sort: mergeSort },
   { name: 'Heap Sort', size: 124, sort: heapSort },
   { name: 'Insertion Sort', size: 32, sort: insertionSort },
   { name: 'Selection Sort', size: 42, sort: selectionSort },
@@ -27,6 +27,10 @@ let animation;
 let pendingImage;
 let currentImage;
 let choosingFile = false;
+let experiment;
+let page = 0;
+const pageSize = 12;
+const duelRate = 120000;
 let lastAlgorithm;
 let upcoming = [];
 let enabled = algorithms.map(item => item.name);
@@ -47,6 +51,18 @@ ui.bogoSpeed.addEventListener('change', () => {
   ui.bogoSpeed.value = speed();
   try { localStorage.setItem(speedKey, ui.bogoSpeed.value); } catch {}
 });
+
+function seconds(input) {
+  return Math.min(120, Math.max(0, Number.isFinite(input.valueAsNumber) ? input.valueAsNumber : Number(input.defaultValue)));
+}
+for (const input of [ui.nextDelay, ui.sortDuration]) {
+  const key = 'pixel-sort-' + input.id;
+  try { input.value = localStorage.getItem(key) ?? input.defaultValue; } catch {}
+  input.addEventListener('change', () => {
+    input.value = seconds(input);
+    try { localStorage.setItem(key, input.value); } catch {}
+  });
+}
 
 const filters = options.map(item => {
   const label = document.createElement('label');
@@ -134,8 +150,14 @@ function renderHistory() {
   ui.count.textContent = seen.length;
   const entries = seen.filter(item => item.image || item.local).reverse();
   ui.empty.hidden = entries.length > 0;
+  const pages = Math.max(1, Math.ceil(entries.length / pageSize));
+  page = Math.min(page, pages - 1);
+  ui.pagination.hidden = pages < 2;
+  ui.previousPage.disabled = page === 0;
+  ui.nextPage.disabled = page === pages - 1;
+  ui.pageNumber.textContent = 'Страница ' + (page + 1) + ' из ' + pages;
   const cards = new Map([...ui.entries.children].map(card => [card.dataset.id, card]));
-  ui.entries.replaceChildren(...entries.map(item => {
+  ui.entries.replaceChildren(...entries.slice(page * pageSize, (page + 1) * pageSize).map(item => {
     const existing = cards.get(item.id);
     if (existing && existing.dataset.algorithm === (item.algorithm || '')) return existing;
     const li = document.createElement('li');
@@ -174,6 +196,9 @@ function renderHistory() {
     return li;
   }));
 }
+
+ui.previousPage.addEventListener('click', () => { page--; renderHistory(); });
+ui.nextPage.addEventListener('click', () => { page++; renderHistory(); });
 
 function reserve(item, fingerprint) {
   return updateHistory(seen => {
@@ -331,21 +356,44 @@ function recordFrames(order, sort) {
   return frames;
 }
 
-function animate({ canvas, item }, hue = false) {
-  const algorithm = hue ? hueAlgorithm : chooseAlgorithm();
+function makeRunner(algorithm, order) {
+  if (algorithm === experimental) return bogoRunner(order);
+  const moves = algorithm.sort(order);
+  return limit => {
+    const deadline = performance.now() + 5;
+    let steps = 0;
+    while (steps < limit) {
+      if (moves.next().done) return { swaps: steps, done: true };
+      steps++;
+      if (steps % 128 === 0 && performance.now() >= deadline) break;
+    }
+    return { swaps: steps, done: false };
+  };
+}
+
+function animate(image, { hue = false, replay, selected, auto = !hue } = {}) {
+  const { canvas, item } = image;
+  const algorithm = selected || (hue ? hueAlgorithm : chooseAlgorithm());
   const bogo = algorithm === experimental;
   const scale = 2 * algorithm.size / Math.max(canvas.width, canvas.height);
-  const width = Math.max(1, Math.round(canvas.width * scale));
-  const height = Math.max(1, Math.round(canvas.height * scale));
+  const width = replay?.width ?? Math.max(1, Math.round(canvas.width * scale));
+  const height = replay?.height ?? Math.max(1, Math.round(canvas.height * scale));
   ui.pixels.width = width;
   ui.pixels.height = height;
-  context.drawImage(canvas, 0, 0, width, height);
-  const target = context.getImageData(0, 0, width, height).data;
-  const colors = hue ? randomHuePalette(target) : target;
-  const sourcePixels = new Uint32Array(colors.buffer);
+  let sourcePixels = replay?.sourcePixels;
+  if (!sourcePixels) {
+    context.drawImage(canvas, 0, 0, width, height);
+    const target = context.getImageData(0, 0, width, height).data;
+    const colors = hue ? randomHuePalette(target) : target;
+    sourcePixels = new Uint32Array(colors.buffer);
+  }
   const frame = context.createImageData(width, height);
   const framePixels = new Uint32Array(frame.data.buffer);
-  const order = shuffle(Uint32Array.from({ length: sourcePixels.length }, (_, index) => index));
+  const initial = replay?.initial ?? shuffle(Uint32Array.from({ length: sourcePixels.length }, (_, index) => index));
+  const order = initial.slice();
+  experiment = { image, hue, width, height, sourcePixels, initial, algorithm };
+  ui.experimentControls.hidden = false;
+  if (options.includes(algorithm)) ui.manualAlgorithm.value = algorithm.name;
   function paint(position, source) {
     framePixels[position] = sourcePixels[source];
   }
@@ -362,11 +410,12 @@ function animate({ canvas, item }, hue = false) {
   }
 
   ui.algorithm.textContent = algorithm.name;
-  const frames = bogo ? null : recordFrames(order, algorithm.sort);
-  const runBogo = bogo ? bogoRunner(order) : null;
+  const stream = bogo || Boolean(replay);
+  const frames = stream ? null : recordFrames(order, algorithm.sort);
+  const runner = stream ? makeRunner(algorithm, order) : null;
   let budget = 0;
   let operations = 0;
-  if (bogo) {
+  if (stream) {
     ui.progress.removeAttribute('value');
     ui.percent.textContent = '—';
   }
@@ -376,15 +425,15 @@ function animate({ canvas, item }, hue = false) {
   ui.pause.disabled = false;
   ui.pause.textContent = run.paused ? 'Продолжить' : 'Пауза';
   ui.status.textContent = run.paused ? 'На паузе' : hue ? 'Собираем копию из случайных цветов…' : 'Сортировка пикселей…';
-  const duration = 4800 + Math.random() * 2600;
+  const duration = seconds(ui.sortDuration) * 1000;
 
   function finish() {
     setProgress(1);
     ui.status.textContent = hue ? 'Копия собрана' : 'Картинка собрана';
     run.finished = true;
-    run.hold = 2000;
+    run.hold = seconds(ui.nextDelay) * 1000;
     saveResult(item.id, algorithm.name).catch(() => {});
-    if (hue) {
+    if (!auto) {
       animation = null;
       ui.pause.disabled = true;
     }
@@ -409,13 +458,13 @@ function animate({ canvas, item }, hue = false) {
         requestAnimationFrame(draw);
         return;
       }
-      if (bogo) {
+      if (stream) {
         const activeDelta = Math.min(delta, 100);
         run.elapsed += activeDelta;
-        budget += activeDelta * speed() / 1000;
+        budget += activeDelta * (bogo ? speed() : duelRate) / 1000;
         const count = Math.floor(budget);
         budget -= count;
-        const { swaps, done } = runBogo(count);
+        const { swaps, done } = runner(count);
         operations += swaps;
         if (swaps) {
           order.forEach((value, position) => paint(position, value));
@@ -427,7 +476,7 @@ function animate({ canvas, item }, hue = false) {
         return;
       }
       run.elapsed += delta;
-      const progress = Math.min(1, run.elapsed / duration);
+      const progress = duration === 0 ? 1 : Math.min(1, run.elapsed / duration);
       const target = Math.floor(progress * (frames.length - 1));
       if (target !== run.position) {
         frames[target].values.forEach((value, position) => paint(position, value));
@@ -445,6 +494,9 @@ function animate({ canvas, item }, hue = false) {
 
 function reset(status) {
   animation = null;
+  ui.single.hidden = false;
+  ui.duel.hidden = true;
+  ui.experimentControls.hidden = true;
   ui.next.disabled = true;
   ui.random.disabled = true;
   ui.upload.disabled = true;
@@ -465,6 +517,121 @@ function enableControls() {
   ui.random.disabled = !currentImage;
   ui.upload.disabled = false;
 }
+
+function fillAlgorithms(select, selected) {
+  for (const algorithm of options) select.add(new Option(algorithm.name, algorithm.name));
+  select.value = selected;
+}
+fillAlgorithms(ui.manualAlgorithm, 'Quick Sort');
+
+function replay(selected) {
+  if (!experiment) return;
+  const saved = experiment;
+  reset('Готовим повтор…');
+  animate(saved.image, { replay: saved, hue: saved.hue, selected: selected || saved.algorithm, auto: false });
+  enableControls();
+}
+ui.repeat.addEventListener('click', () => replay());
+ui.runSelected.addEventListener('click', () => replay(options.find(item => item.name === ui.manualAlgorithm.value)));
+
+const duelPanels = ['Quick Sort', 'Merge Sort'].map((initial, index) => {
+  const panel = document.createElement('section');
+  panel.innerHTML = '<select></select><div class="viewport"><canvas></canvas></div><div class="run-stats"><span>Операции <b>0</b></span><span>Время <b>0,0 с</b></span><span></span></div>';
+  const select = panel.querySelector('select');
+  select.setAttribute('aria-label', index ? 'Правый алгоритм' : 'Левый алгоритм');
+  fillAlgorithms(select, initial);
+  const canvas = panel.querySelector('canvas');
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', index ? 'Правая анимация' : 'Левая анимация');
+  const [count, time] = panel.querySelectorAll('b');
+  const status = panel.querySelector('.run-stats').lastElementChild;
+  ui.duelPanels.append(panel);
+  return { select, canvas, count, time, status };
+});
+
+function duelTrial(panel, fixture) {
+  const algorithm = options.find(item => item.name === panel.select.value);
+  const order = fixture.initial.slice();
+  panel.canvas.width = fixture.width;
+  panel.canvas.height = fixture.height;
+  const ctx = panel.canvas.getContext('2d');
+  const frame = ctx.createImageData(fixture.width, fixture.height);
+  const pixels = new Uint32Array(frame.data.buffer);
+  const paint = () => {
+    order.forEach((value, index) => { pixels[index] = fixture.sourcePixels[value]; });
+    ctx.putImageData(frame, 0, 0);
+  };
+  paint();
+  panel.count.textContent = '0';
+  panel.time.textContent = formatTime.format(0) + ' с';
+  panel.status.textContent = '';
+  return { panel, paint, runner: makeRunner(algorithm, order), operations: 0, elapsed: 0, budget: 0, done: false };
+}
+
+function startDuel() {
+  if (!experiment) return;
+  const run = { paused: matchMedia('(prefers-reduced-motion: reduce)').matches, lastFrame: null };
+  const trials = duelPanels.map(panel => duelTrial(panel, experiment));
+  animation = run;
+  ui.duelPause.disabled = false;
+  ui.duelPause.textContent = run.paused ? 'Продолжить' : 'Пауза';
+  function draw(time) {
+    if (animation !== run) return;
+    if (!run.paused && !choosingFile) {
+      const delta = run.lastFrame === null ? 0 : Math.min(100, time - run.lastFrame);
+      run.lastFrame = time;
+      for (const trial of trials) {
+        if (trial.done) continue;
+        trial.budget += delta * duelRate / 1000;
+        const count = Math.floor(trial.budget);
+        trial.budget -= count;
+        const { swaps, done } = trial.runner(count);
+        trial.operations += swaps;
+        trial.elapsed += done && count ? delta * swaps / count : delta;
+        trial.done = done;
+        if (swaps) trial.paint();
+        trial.panel.count.textContent = formatCount.format(trial.operations);
+        trial.panel.time.textContent = formatTime.format(trial.elapsed / 1000) + ' с';
+        if (done) trial.panel.status.textContent = 'Готово';
+      }
+      if (trials.every(trial => trial.done)) {
+        animation = null;
+        ui.duelPause.disabled = true;
+        return;
+      }
+    } else {
+      run.lastFrame = null;
+    }
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+}
+
+ui.duelOpen.addEventListener('click', () => {
+  ui.single.hidden = true;
+  ui.duel.hidden = false;
+  ui.experimentControls.hidden = true;
+  ui.pause.disabled = true;
+  ui.duelSize.textContent = experiment.width + ' × ' + experiment.height + ' PX';
+  startDuel();
+});
+ui.duelStart.addEventListener('click', startDuel);
+for (const panel of duelPanels) panel.select.addEventListener('change', () => {
+  if (!experiment || ui.duel.hidden) return;
+  animation = null;
+  ui.duelPause.disabled = true;
+  for (const contender of duelPanels) {
+    duelTrial(contender, experiment);
+    contender.status.textContent = 'Ожидает запуска';
+  }
+});
+ui.duelClose.addEventListener('click', () => replay());
+ui.duelPause.addEventListener('click', () => {
+  if (!animation) return;
+  animation.paused = !animation.paused;
+  animation.lastFrame = null;
+  ui.duelPause.textContent = animation.paused ? 'Продолжить' : 'Пауза';
+});
 
 async function next() {
   reset('Ищем изображение…');
@@ -506,7 +673,7 @@ async function makeHue(file) {
       seen.push(entry);
       return true;
     });
-    animate({ canvas, item: entry }, true);
+    animate({ canvas, item: entry }, { hue: true });
   } catch {
     ui.status.textContent = 'Не удалось открыть картинку или подготовить копию.';
   } finally {
@@ -518,13 +685,12 @@ ui.next.addEventListener('click', next);
 ui.random.addEventListener('click', () => makeHue());
 ui.upload.addEventListener('click', () => {
   choosingFile = true;
-  ui.file.click();
 });
-ui.file.addEventListener('cancel', () => { choosingFile = false; });
-ui.file.addEventListener('change', () => {
+ui.upload.addEventListener('cancel', () => { choosingFile = false; });
+ui.upload.addEventListener('change', () => {
   choosingFile = false;
-  const file = ui.file.files[0];
-  ui.file.value = '';
+  const file = ui.upload.files[0];
+  ui.upload.value = '';
   if (file && !ui.upload.disabled) makeHue(file);
 });
 ui.pause.addEventListener('click', () => {
@@ -538,4 +704,43 @@ ui.pause.addEventListener('click', () => {
 window.addEventListener('storage', event => {
   if (event.key === historyKey) renderHistory();
 });
-next();
+
+const exampleTitles = new Map([
+  ['cma:1960.81', 'Кувшинки'],
+  ['cma:1972.47', 'Мадонна с младенцем'],
+  ['cma:2014.12', 'Долина Кашмира']
+]);
+for (const item of samples.filter(item => exampleTitles.has(item.id))) {
+  const li = document.createElement('li');
+  const button = document.createElement('button');
+  const img = document.createElement('img');
+  img.src = item.image;
+  img.alt = '';
+  button.append(img, exampleTitles.get(item.id));
+  button.addEventListener('click', async () => {
+    if (ui.upload.disabled) return;
+    reset('Загружаем пример…');
+    ui.single.scrollIntoView({ block: 'start' });
+    try {
+      const bitmap = await loadImage(item.image);
+      let canvas;
+      try { canvas = imageCanvas(bitmap); } finally { bitmap.close(); }
+      await reserve(item, fingerprintOf(canvas));
+      currentImage = { canvas, item };
+      animate(currentImage, { selected: algorithms[0], auto: false });
+    } catch {
+      ui.status.textContent = 'Не удалось открыть пример.';
+    } finally {
+      enableControls();
+    }
+  });
+  li.append(button);
+  ui.examples.append(li);
+}
+renderHistory();
+if (location.hash === '#gallery' && !ui.empty.hidden) {
+  ui.status.textContent = 'Выбери пример в истории или загрузи картинку.';
+  enableControls();
+} else {
+  next();
+}

@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Случайные изображения из открытых коллекций и визуализация Quick Sort и Merge Sort.">
 <title>Pixel Sort — Сортировка пикселей</title>
-<link rel="stylesheet" href="style.css?v=6">
-<script type="module" src="app.mjs?v=7"></script>
+<link rel="stylesheet" href="style.css?v=8">
+<script type="module" src="app.mjs?v=8"></script>
 </head>
 <body>
 <header><div class="shell bar">
@@ -18,7 +18,7 @@
     <h1>Сортировка пикселей</h1>
   </section>
   <section class="studio" aria-label="Визуализация сортировки">
-    <div class="stage">
+    <div class="stage" id="single">
       <div class="comparison live">
         <section aria-label="Текущая сортировка">
           <div class="stage-line"><span>Алгоритм <strong id="algorithm">—</strong></span><span id="dimensions">— × — PX</span></div>
@@ -42,17 +42,37 @@
       </div>
       <progress id="progress" max="100" value="0" aria-label="Ход сортировки"></progress>
     </div>
+    <section class="stage" id="duel" aria-label="Дуэль алгоритмов" hidden>
+      <div class="stage-line"><strong>Дуэль алгоритмов</strong><span id="duelSize"></span></div>
+      <div class="comparison" id="duelPanels"></div>
+      <div class="controls">
+        <button id="duelStart">Запустить дуэль</button>
+        <button id="duelPause" class="secondary" disabled>Пауза</button>
+        <button id="duelClose" class="secondary">Выйти из дуэли</button>
+      </div>
+    </section>
     <div class="controls">
       <button class="secondary" id="pause" disabled>Пауза</button>
       <button id="next" disabled>Новая картинка <span aria-hidden="true">→</span></button>
       <button class="secondary" id="random" disabled>Случайные пиксели</button>
-      <button class="secondary" id="upload">Загрузить картинку</button>
-      <input id="file" type="file" accept="image/*" hidden>
+      <label class="upload">Загрузить картинку<input id="upload" type="file" accept="image/*"></label>
       <a id="source" target="_blank" rel="noopener" hidden>Открыть источник ↗</a>
+    </div>
+    <div class="controls" id="experimentControls" hidden>
+      <button class="secondary" id="repeat">Повторить</button>
+      <label for="manualAlgorithm">Алгоритм</label>
+      <select id="manualAlgorithm"></select>
+      <button class="secondary" id="runSelected">Запустить</button>
+      <button class="secondary" id="duelOpen">Дуэль алгоритмов</button>
     </div>
     <details class="settings">
       <summary>Настройки</summary>
       <fieldset id="filters"><legend>Алгоритмы для случайного выбора</legend></fieldset>
+      <div class="timings">
+        <label>Следующая картинка через, с <input id="nextDelay" type="number" min="0" max="120" step="0.5" value="2"></label>
+        <label>Автоматическая сборка, с <input id="sortDuration" type="number" min="0" max="120" step="0.5" value="6"></label>
+      </div>
+      <p>0 секунд — моментально. Bogo Sort работает со своей скоростью.</p>
       <div class="speed">
         <label for="bogoSpeed">Скорость Bogo Sort, обменов/с</label>
         <input id="bogoSpeed" type="number" min="1000" max="20000000" step="1000" value="10000" inputmode="numeric">
@@ -62,8 +82,16 @@
   </section>
   <section class="archive" id="gallery">
     <h2>История картинок</h2>
-    <p id="empty">Новые картинки будут появляться здесь.</p>
+    <section id="empty" aria-label="Примеры">
+      <p>Выбери пример, чтобы запустить сборку.</p>
+      <ul id="examples"></ul>
+    </section>
     <ul id="entries" aria-label="Просмотренные картинки"></ul>
+    <nav id="pagination" class="controls" aria-label="Страницы истории" hidden>
+      <button class="secondary" id="previousPage">Назад</button>
+      <span id="pageNumber"></span>
+      <button class="secondary" id="nextPage">Вперёд</button>
+    </nav>
     <dialog id="preview" aria-label="Сравнение картинки из истории">
       <form method="dialog"><button>Закрыть</button></form>
       <div class="comparison">

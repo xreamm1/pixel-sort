@@ -42,7 +42,18 @@ progress { display: block; width: 100%; height: 3px; accent-color: var(--ink); }
 #source { margin-inline-start: auto; }
 button { cursor: pointer; background: var(--ink); color: #111; border: 1px solid transparent; border-radius: 6px; padding: 8px 12px; font: 600 .85rem system-ui, sans-serif; }
 button.secondary { background: transparent; color: var(--ink); border-color: var(--line); }
+.upload { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; font: 600 .85rem system-ui, sans-serif; }
+.upload input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+.upload:focus-within { outline: 2px solid #eee; outline-offset: 3px; }
+.upload:has(input:disabled) { opacity: .45; }
 button:disabled { opacity: .45; cursor: default; }
+select { max-width: 100%; font: inherit; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+#experimentControls label { color: var(--muted); font-size: .8rem; }
+.timings { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; }
+.settings input[type=number] { width: 7em; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 5px; }
+#pagination { color: var(--muted); font-size: .8rem; }
+#duelPanels { margin-top: 12px; }
+#duelPanels .run-stats { margin-top: 8px; font-size: .8rem; }
 :focus-visible { outline: 2px solid #eee; outline-offset: 3px; }
 .archive { margin: 32px 0 48px; padding-top: 20px; border-top: 1px solid var(--line); }
 .archive h2 { margin: 0 0 14px; font-size: 1.1rem; }
