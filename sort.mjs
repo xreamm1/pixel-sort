@@ -106,11 +106,26 @@ export function* bubbleSort(values) {
   }
 }
 
-export function* bogoSort(values) {
-  while (values.some((value, index) => value !== index)) {
-    for (let i = values.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      if (i !== j) yield swap(values, i, j);
+export function bogoRunner(values, random = Math.random) {
+  let i = 0;
+  let done = false;
+  return limit => {
+    let swaps = 0;
+    while (swaps < limit && !done) {
+      if (i === 0) {
+        done = !values.some((value, index) => value !== index);
+        if (done) break;
+        i = values.length - 1;
+      }
+      const j = Math.floor(random() * (i + 1));
+      if (i !== j) {
+        const value = values[i];
+        values[i] = values[j];
+        values[j] = value;
+        swaps++;
+      }
+      i--;
     }
-  }
+    return { swaps, done };
+  };
 }

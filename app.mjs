@@ -1,4 +1,5 @@
-import { shuffle, quickSort, mergeSort, heapSort, insertionSort, selectionSort, bubbleSort, bogoSort } from './sort.mjs?v=2';
+import { shuffle, quickSort, mergeSort, heapSort, insertionSort, selectionSort, bubbleSort, bogoRunner } from './sort.mjs?v=6';
+import { randomHuePalette } from './hue.mjs?v=6';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(el => [el.id, el]));
 const context = ui.pixels.getContext('2d');
@@ -18,11 +19,13 @@ const algorithms = [
   { name: 'Selection Sort', size: 42, sort: selectionSort },
   { name: 'Bubble Sort', size: 32, sort: bubbleSort }
 ];
-const experimental = { name: 'Bogo Sort', size: 168, sort: bogoSort };
+const experimental = { name: 'Bogo Sort', size: 168 };
+const hueAlgorithm = { name: 'Подбор по Hue', size: 160, sort: mergeSort };
 const options = [...algorithms, experimental];
 const samples = await fetch('./samples.json').then(response => response.json()).catch(() => []);
 let animation;
 let pendingImage;
+let currentImage;
 let lastAlgorithm;
 let upcoming = [];
 let enabled = algorithms.map(item => item.name);
@@ -36,12 +39,11 @@ try {
   const saved = localStorage.getItem(speedKey);
   if (saved !== null) ui.bogoSpeed.value = saved;
 } catch {}
-function showSpeed() {
-  ui.speedValue.textContent = formatCount.format(ui.bogoSpeed.valueAsNumber);
+function speed() {
+  return Math.min(20000000, Math.max(1000, ui.bogoSpeed.valueAsNumber || 10000));
 }
-showSpeed();
-ui.bogoSpeed.addEventListener('input', () => {
-  showSpeed();
+ui.bogoSpeed.addEventListener('change', () => {
+  ui.bogoSpeed.value = speed();
   try { localStorage.setItem(speedKey, ui.bogoSpeed.value); } catch {}
 });
 
@@ -129,7 +131,7 @@ async function saveResult(id, algorithm) {
 function renderHistory() {
   const seen = history();
   ui.count.textContent = seen.length;
-  const entries = seen.filter(item => item.image && item.url).reverse();
+  const entries = seen.filter(item => item.image || item.local).reverse();
   ui.empty.hidden = entries.length > 0;
   const cards = new Map([...ui.entries.children].map(card => [card.dataset.id, card]));
   ui.entries.replaceChildren(...entries.map(item => {
@@ -140,7 +142,8 @@ function renderHistory() {
     li.dataset.algorithm = item.algorithm || '';
     const button = document.createElement('button');
     const img = document.createElement('img');
-    img.src = item.image;
+    if (item.image) img.src = item.image;
+    else if (!item.algorithm) showResult(img, item.id + ':original').catch(() => {});
     img.alt = '';
     img.loading = 'lazy';
     button.type = 'button';
@@ -150,8 +153,12 @@ function renderHistory() {
     }
     button.append(img, item.algorithm ? item.algorithm + ' · Собрано' : item.source);
     button.addEventListener('click', async () => {
-      ui.previewImage.src = item.image;
-      ui.previewSource.href = item.url;
+      ui.previewImage.removeAttribute('src');
+      ui.previewImage.dataset.resultId = item.id + ':original';
+      if (item.image) ui.previewImage.src = item.image;
+      else showResult(ui.previewImage, item.id + ':original').catch(() => {});
+      ui.previewSource.hidden = !item.url;
+      if (item.url) ui.previewSource.href = item.url;
       ui.resultCaption.textContent = item.algorithm ? 'Пиксельный результат · ' + item.algorithm : 'Пиксельный результат';
       ui.previewResult.hidden = true;
       ui.previewResult.dataset.resultId = item.id;
@@ -238,6 +245,18 @@ async function loadImage(url) {
   return createImageBitmap(blob);
 }
 
+function imageCanvas(bitmap) {
+  const scale = 352 / Math.max(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#101113';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
 function fingerprintOf(canvas) {
   const sample = document.createElement('canvas');
   sample.width = 17;
@@ -271,14 +290,7 @@ async function pickImage() {
         for (let i = 0; i < loaded.length; i++) {
           if (loaded[i].status !== 'fulfilled') continue;
           const bitmap = loaded[i].value;
-          const scale = 352 / Math.max(bitmap.width, bitmap.height);
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-          canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-          const ctx = canvas.getContext('2d', { willReadFrequently: true });
-          ctx.fillStyle = '#101113';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          const canvas = imageCanvas(bitmap);
           const item = batch[i];
           const fingerprint = fingerprintOf(canvas);
           if (!history().some(entry => entry.fingerprint === fingerprint)) return { canvas, item, fingerprint };
@@ -318,8 +330,8 @@ function recordFrames(order, sort) {
   return frames;
 }
 
-function animate({ canvas, item }) {
-  const algorithm = chooseAlgorithm();
+function animate({ canvas, item }, hue = false) {
+  const algorithm = hue ? hueAlgorithm : chooseAlgorithm();
   const bogo = algorithm === experimental;
   const scale = 2 * algorithm.size / Math.max(canvas.width, canvas.height);
   const width = Math.max(1, Math.round(canvas.width * scale));
@@ -327,7 +339,9 @@ function animate({ canvas, item }) {
   ui.pixels.width = width;
   ui.pixels.height = height;
   context.drawImage(canvas, 0, 0, width, height);
-  const sourcePixels = new Uint32Array(context.getImageData(0, 0, width, height).data.buffer);
+  const target = context.getImageData(0, 0, width, height).data;
+  const colors = hue ? randomHuePalette(target) : target;
+  const sourcePixels = new Uint32Array(colors.buffer);
   const frame = context.createImageData(width, height);
   const framePixels = new Uint32Array(frame.data.buffer);
   const order = shuffle(Uint32Array.from({ length: sourcePixels.length }, (_, index) => index));
@@ -337,16 +351,18 @@ function animate({ canvas, item }) {
   order.forEach((index, position) => paint(position, index));
   context.putImageData(frame, 0, 0);
   ui.placeholder.hidden = true;
-  ui.original.src = item.image;
+  ui.original.src = item.image || canvas.toDataURL();
   ui.original.hidden = false;
   ui.dimensions.textContent = width + ' × ' + height + ' PX';
-  ui.source.href = item.url;
-  ui.source.textContent = item.source + ' ↗';
-  ui.source.hidden = false;
+  ui.source.hidden = !item.url;
+  if (item.url) {
+    ui.source.href = item.url;
+    ui.source.textContent = item.source + ' ↗';
+  }
 
   ui.algorithm.textContent = algorithm.name;
   const frames = bogo ? null : recordFrames(order, algorithm.sort);
-  const randomMoves = bogo ? algorithm.sort(order) : null;
+  const runBogo = bogo ? bogoRunner(order) : null;
   let budget = 0;
   let operations = 0;
   if (bogo) {
@@ -354,19 +370,23 @@ function animate({ canvas, item }) {
     ui.percent.textContent = '—';
   }
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const run = { paused: reducedMotion, elapsed: 0, lastFrame: null, position: 0 };
+  const run = { paused: reducedMotion, elapsed: 0, lastFrame: null, position: 0, hue };
   animation = run;
   ui.pause.disabled = false;
   ui.pause.textContent = run.paused ? 'Продолжить' : 'Пауза';
-  ui.status.textContent = run.paused ? 'На паузе' : 'Сортировка пикселей…';
+  ui.status.textContent = run.paused ? 'На паузе' : hue ? 'Собираем копию из случайных цветов…' : 'Сортировка пикселей…';
   const duration = 4800 + Math.random() * 2600;
 
   function finish() {
     setProgress(1);
-    ui.status.textContent = 'Картинка собрана';
+    ui.status.textContent = hue ? 'Копия собрана' : 'Картинка собрана';
     run.finished = true;
     run.hold = 2000;
     saveResult(item.id, algorithm.name).catch(() => {});
+    if (hue) {
+      animation = null;
+      ui.pause.disabled = true;
+    }
   }
 
   function draw(time) {
@@ -386,22 +406,15 @@ function animate({ canvas, item }) {
       if (bogo) {
         const activeDelta = Math.min(delta, 100);
         run.elapsed += activeDelta;
-        budget += activeDelta * ui.bogoSpeed.valueAsNumber / 1000;
-        let done = false;
+        budget += activeDelta * speed() / 1000;
         const count = Math.floor(budget);
         budget -= count;
-        for (let step = 0; step < count; step++) {
-          const move = randomMoves.next();
-          if (move.done) {
-            done = true;
-            break;
-          }
-          const [i, j, left, right] = move.value;
-          paint(i, left);
-          paint(j, right);
-          operations++;
+        const { swaps, done } = runBogo(count);
+        operations += swaps;
+        if (swaps) {
+          order.forEach((value, position) => paint(position, value));
+          context.putImageData(frame, 0, 0);
         }
-        if (count) context.putImageData(frame, 0, 0);
         setMetrics(operations, run.elapsed);
         if (done) finish();
         requestAnimationFrame(draw);
@@ -424,9 +437,11 @@ function animate({ canvas, item }) {
   requestAnimationFrame(draw);
 }
 
-async function next() {
+function reset(status) {
   animation = null;
   ui.next.disabled = true;
+  ui.random.disabled = true;
+  ui.upload.disabled = true;
   ui.pause.disabled = true;
   ui.pause.textContent = 'Пауза';
   ui.placeholder.hidden = false;
@@ -434,15 +449,26 @@ async function next() {
   ui.source.hidden = true;
   ui.dimensions.textContent = '— × — PX';
   ui.algorithm.textContent = '—';
-  ui.status.textContent = 'Ищем изображение…';
+  ui.status.textContent = status;
   setProgress(0);
   setMetrics(0, 0);
+}
+
+function enableControls() {
+  ui.next.disabled = false;
+  ui.random.disabled = !currentImage;
+  ui.upload.disabled = false;
+}
+
+async function next() {
+  reset('Ищем изображение…');
   try {
     renderHistory();
     let image = await pendingImage;
     pendingImage = null;
     image ??= await pickImage();
     while (!(await reserve(image.item, image.fingerprint))) image = await pickImage();
+    currentImage = image;
     animate(image);
     pendingImage = pickImage().catch(() => null);
   } catch (error) {
@@ -450,17 +476,53 @@ async function next() {
       ? 'Браузер не может сохранить историю показов.'
       : error.message;
   } finally {
-    ui.next.disabled = false;
+    enableControls();
+  }
+}
+
+async function makeHue(file) {
+  reset(file ? 'Открываем картинку…' : 'Создаём случайные цвета…');
+  try {
+    if (file) {
+      const bitmap = await createImageBitmap(file);
+      let canvas;
+      try { canvas = imageCanvas(bitmap); } finally { bitmap.close(); }
+      currentImage = { canvas, item: { local: true, source: 'Своя картинка' } };
+    }
+    const { canvas, item } = currentImage;
+    const entry = { ...item, id: 'hue:' + crypto.randomUUID() };
+    if (entry.local) {
+      const original = await new Promise(resolve => canvas.toBlob(resolve));
+      const cache = await results;
+      if (cache && original) await cache.put(resultKey(entry.id + ':original'), new Response(original, { headers: { 'Content-Type': original.type } }));
+    }
+    await updateHistory(seen => {
+      seen.push(entry);
+      return true;
+    });
+    animate({ canvas, item: entry }, true);
+  } catch {
+    ui.status.textContent = 'Не удалось открыть картинку или подготовить копию.';
+  } finally {
+    enableControls();
   }
 }
 
 ui.next.addEventListener('click', next);
+ui.random.addEventListener('click', () => makeHue());
+ui.upload.addEventListener('click', () => ui.file.click());
+ui.file.addEventListener('change', () => {
+  const file = ui.file.files[0];
+  ui.file.value = '';
+  if (file && !ui.upload.disabled) makeHue(file);
+});
 ui.pause.addEventListener('click', () => {
   if (!animation) return;
   animation.paused = !animation.paused;
   animation.lastFrame = null;
   ui.pause.textContent = animation.paused ? 'Продолжить' : 'Пауза';
-  ui.status.textContent = animation.paused ? 'На паузе' : animation.finished ? 'Картинка собрана' : 'Сортировка пикселей…';
+  ui.status.textContent = animation.paused ? 'На паузе' : animation.finished ? 'Картинка собрана'
+    : animation.hue ? 'Собираем копию из случайных цветов…' : 'Сортировка пикселей…';
 });
 window.addEventListener('storage', event => {
   if (event.key === historyKey) renderHistory();
