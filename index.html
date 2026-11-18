@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Случайные изображения из открытых коллекций и визуализация Quick Sort и Merge Sort.">
 <title>Pixel Sort — Сортировка пикселей</title>
-<link rel="stylesheet" href="style.css?v=3">
-<script type="module" src="app.mjs?v=3"></script>
+<link rel="stylesheet" href="style.css?v=4">
+<script type="module" src="app.mjs?v=4"></script>
 </head>
 <body>
 <header><div class="shell bar">
@@ -32,7 +32,14 @@
           <div class="viewport"><img id="original" alt="Оригинал текущей картинки" hidden></div>
         </figure>
       </div>
-      <div class="stage-line footer"><span id="status" role="status">Ищем изображение…</span><b id="percent">0%</b></div>
+      <div class="stage-line footer">
+        <span id="status" role="status">Ищем изображение…</span>
+        <span class="run-stats">
+          <span title="Обмены и записи в процессе сортировки">Операции <b id="operations">0</b></span>
+          <span>Время <b id="elapsed">0,0 с</b></span>
+          <b id="percent">0%</b>
+        </span>
+      </div>
       <progress id="progress" max="100" value="0" aria-label="Ход сортировки"></progress>
     </div>
     <div class="controls">

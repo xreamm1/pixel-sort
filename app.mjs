@@ -2,6 +2,8 @@ import { shuffle, quickSort, mergeSort, heapSort, insertionSort, selectionSort, 
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(el => [el.id, el]));
 const context = ui.pixels.getContext('2d');
+const formatCount = new Intl.NumberFormat('ru');
+const formatTime = new Intl.NumberFormat('ru', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const historyKey = 'pixel-sort-history-v1';
 const results = globalThis.caches?.open('pixel-sort-results-v1').catch(() => null);
 const filtersKey = 'pixel-sort-algorithms-v1';
@@ -281,19 +283,24 @@ function setProgress(value) {
   ui.percent.textContent = percent + '%';
 }
 
+function setMetrics(steps, ms) {
+  ui.operations.textContent = formatCount.format(steps);
+  ui.elapsed.textContent = formatTime.format(ms / 1000) + ' с';
+}
+
 function recordFrames(order, sort) {
-  let frames = [order.slice()];
+  let frames = [{ values: order.slice(), steps: 0 }];
   let stride = 64;
   let steps = 0;
   for (const _ of sort(order)) {
     if (++steps % stride !== 0) continue;
-    frames.push(order.slice());
+    frames.push({ values: order.slice(), steps });
     if (frames.length === 97) {
       frames = frames.filter((_, index) => index % 2 === 0);
       stride *= 2;
     }
   }
-  frames.push(order.slice());
+  frames.push({ values: order.slice(), steps });
   return frames;
 }
 
@@ -361,15 +368,16 @@ function animate({ canvas, item }) {
         requestAnimationFrame(draw);
         return;
       }
-      run.elapsed += Math.min(delta, 80);
+      run.elapsed += delta;
       const progress = Math.min(1, run.elapsed / duration);
       const target = Math.floor(progress * (frames.length - 1));
       if (target !== run.position) {
-        frames[target].forEach((value, position) => paint(position, value));
+        frames[target].values.forEach((value, position) => paint(position, value));
         context.putImageData(frame, 0, 0);
         run.position = target;
       }
       setProgress(progress);
+      setMetrics(frames[target].steps, run.elapsed);
       if (progress === 1) {
         ui.status.textContent = 'Картинка собрана';
         run.finished = true;
@@ -394,6 +402,7 @@ async function next() {
   ui.algorithm.textContent = '—';
   ui.status.textContent = 'Ищем изображение…';
   setProgress(0);
+  setMetrics(0, 0);
   try {
     renderHistory();
     let image = await pendingImage;
